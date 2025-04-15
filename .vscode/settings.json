@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "stc89.h": "c",
+        "reg51.h": "c",
+        "8052.h": "c",
+        "compile.h": "c",
+        "tools.h": "c"
+    },
+    "C_Cpp.errorSquiggles": "disabled"
+}
