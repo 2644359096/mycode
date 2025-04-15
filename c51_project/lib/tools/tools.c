@@ -11,14 +11,14 @@ void ShowNixie(bool common_pole,u8 LED_num,u8 show_char)
 {
     switch (LED_num)
     {
-    case 1:  P22=0;P23=0,P24=0;  break;
-    case 2:  P22=0;P23=0,P24=1;  break;
-    case 3:  P22=0;P23=1,P24=0;  break;
-    case 4:  P22=0;P23=1,P24=1;  break;
-    case 5:  P22=1;P23=0,P24=0;  break;
-    case 6:  P22=1;P23=0,P24=1;  break;
-    case 7:  P22=1;P23=1,P24=0;  break;
-    case 8:  P22=1;P23=1,P24=1;  break;
+    case 8:  P22=0;P23=0,P24=0;  break;
+    case 7:  P22=0;P23=0,P24=1;  break;
+    case 6:  P22=0;P23=1,P24=0;  break;
+    case 5:  P22=0;P23=1,P24=1;  break;
+    case 4:  P22=1;P23=0,P24=0;  break;
+    case 3:  P22=1;P23=0,P24=1;  break;
+    case 2:  P22=1;P23=1,P24=0;  break;
+    case 1:  P22=1;P23=1,P24=1;  break;
     }
     
     if(common_pole){//共阳极
