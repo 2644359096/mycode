@@ -88,7 +88,8 @@
  
  # define INTERRUPT(name, vector) void name (void) __interrupt (vector)
  # define INTERRUPT_USING(name, vector, regnum) void name (void) __interrupt (vector) __using (regnum)
- 
+ # define CODE(type,name,...) __code type name[]  = {__VA_ARGS__}
+
  // NOP () macro support
  #define NOP() __asm NOP __endasm
  

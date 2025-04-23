@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>蓝牙控制面板</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        .container {
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .form-group {
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+        }
+        label {
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        input, select, button {
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .output-container {
+            margin-top: 20px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            background-color: #f9f9f9;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 4px;
+        }
+        .sent {
+            background-color: #e0f7fa;
+            text-align: right;
+        }
+        .received {
+            background-color: #f8bbd0;
+            text-align: left;
+        }
+        /* 新增样式 */
+        .message {
+            margin-bottom: 10px;
+            padding: 8px;
+            border-radius: 4px;
+            opacity: 0; /* 初始透明度为0 */
+            transform: scale(0.9) rotate(-10deg); /* 初始状态：缩小并轻微旋转 */
+            transition: opacity 0.5s ease-in-out, transform 0.5s ease-in-out;
+        }
+        .message.show {
+            opacity: 1; /* 显示时透明度为1 */
+            transform: scale(1) rotate(0deg); /* 显示时恢复正常大小和角度 */
+        }
+        .command-output {
+            height: 200px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 10px;
+            background-color: #f9f9f9;
+        }
+        #command-input {
+            margin-top: 10px;
+        }
+        #send-command {
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>蓝牙控制面板</h1>
+        
+        <div class="form-group">
+            <label for="bluetooth-select">选择蓝牙设备：</label>
+            <select id="bluetooth-select">
+                <option value="">--请选择设备--</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <button id="scan-btn">扫描蓝牙设备</button>
+            <button id="connect-btn">连接蓝牙设备</button>
+        </div>
+        
+        <!-- 新增波特率设置 -->
+        <div class="form-group">
+            <label for="baud-rate">选择波特率：</label>
+            <select id="baud-rate">
+                <option value="9600">9600</option>
+                <option value="19200">19200</option>
+                <option value="38400">38400</option>
+                <option value="57600">57600</option>
+                <option value="115200">115200</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label>IO字节格式：</label>
+            <select id="io-format">
+                <option value="ascii">ASCII</option>
+                <option value="hex">HEX</option>
+            </select>
+        </div>
+        
+        <div class="form-group">
+            <label>自定义键盘：</label>
+            <div id="custom-keyboard-container"></div>
+            <input type="text" id="button-name" placeholder="按钮名称">
+            <input type="text" id="button-value" placeholder="键值">
+            <button id="add-button">添加按钮</button>
+        </div>
+
+        <div class="form-group">
+            <label>输出：</label>
+            <div id="output"></div>
+        </div>
+
+        <!-- 新增帮助按钮 -->
+        <div class="form-group">
+            <button id="help-btn">帮助</button>
+        </div>
+
+        <!-- 修改命令行模块 -->
+        <div class="form-group">
+            <label>命令行模式：</label>
+            <div class="command-output" id="command-output"></div>
+            <input type="text" id="command-input" placeholder="输入命令">
+            <button id="send-command">发送</button>
+        </div>
+    </div>
+
+    <script>
+        let bluetoothDevice = null;
+
+        // 新增函数：创建自定义按钮
+        function createCustomButton(buttonName, buttonValue) {
+            const container = document.getElementById('custom-keyboard-container');
+            const button = document.createElement('button');
+            button.textContent = buttonName;
+            button.style.margin = '5px';
+
+            // 修改：点击按钮时发送数据并显示按钮名称和键值
+            button.addEventListener('click', async function() {
+                const format = document.getElementById('io-format').value;
+                let data;
+                try {
+                    if (format === 'ascii') {
+                        data = new TextEncoder().encode(buttonValue);
+                    } else {
+                        const hexValue = toHex(buttonValue);
+                        data = hexStringToUint8Array(hexValue);
+                    }
+                } catch (error) {
+                    addMessage(document.getElementById('output'), `数据格式错误：${error.message}`, 'received');
+                    return;
+                }
+
+                await sendData(data);
+                addMessage(document.getElementById('output'), `按钮"${buttonName}"被按下，键值：${buttonValue}`, 'sent');
+            });
+
+            const deleteButton = document.createElement('button');
+            deleteButton.textContent = '删除';
+            deleteButton.style.marginLeft = '5px';
+            deleteButton.style.fontSize = '12px';
+            deleteButton.addEventListener('click', function() {
+                container.removeChild(button);
+                container.removeChild(deleteButton);
+                addMessage(document.getElementById('output'), `已删除按钮：${buttonName}`, 'received'); // 显示删除信息
+            });
+
+            container.appendChild(button);
+            container.appendChild(deleteButton);
+        }
+
+        function addMessage(container, message, className) {
+            const messageElement = document.createElement('div');
+            messageElement.className = `message ${className}`;
+            messageElement.textContent = message;
+            container.appendChild(messageElement);
+
+            setTimeout(() => {
+                messageElement.classList.add('show');
+            }, 100);
+
+            let hideTimeout;
+            let isHovered = false;
+
+            messageElement.addEventListener('mouseenter', () => {
+                isHovered = true;
+                clearTimeout(hideTimeout);
+            });
+
+            messageElement.addEventListener('mouseleave', () => {
+                isHovered = false;
+                hideTimeout = setTimeout(() => {
+                    if (!isHovered) {
+                        messageElement.classList.remove('show');
+                        messageElement.classList.add('hidden');
+                        setTimeout(() => {
+                            container.removeChild(messageElement);
+                        }, 500);
+                    }
+                }, 5000);
+            });
+
+            hideTimeout = setTimeout(() => {
+                if (!isHovered) {
+                    messageElement.classList.remove('show');
+                    messageElement.classList.add('hidden');
+                    setTimeout(() => {
+                        container.removeChild(messageElement);
+                    }, 500);
+                }
+            }, 5000);
+        }
+
+        document.getElementById('scan-btn').addEventListener('click', async function() {
+            if (!confirm('您确定要扫描蓝牙设备吗？此操作需要您的授权。')) {
+                addMessage(document.getElementById('output'), '扫描已取消', 'received');
+                return;
+            }
+
+            try {
+                if (!navigator.bluetooth) {
+                    throw new Error('当前浏览器不支持 Web Bluetooth API，请使用最新版 Chrome 浏览器。');
+                }
+
+                // 修改: 使用更通用的 optionalServices 或不指定服务
+                const device = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: true,
+                    optionalServices: ['battery_service', 'device_information', 'generic_access', 'generic_attribute'] // 添加更多常见服务
+                });
+
+                bluetoothDevice = device;
+                const select = document.getElementById('bluetooth-select');
+                select.innerHTML = '<option value="">--请选择设备--</option>';
+                select.innerHTML += `<option value="${device.id}">${device.name || '未知设备'}</option>`;
+                addMessage(document.getElementById('output'), `已发现蓝牙设备：${device.name || '未知设备'}`, 'received');
+            } catch (error) {
+                let errorMessage = error.message;
+                if (error.name === 'NotFoundError') {
+                    errorMessage = '未找到可用的蓝牙设备，请检查设备是否已开启并配对。';
+                } else if (error.name === 'SecurityError') {
+                    errorMessage = '安全错误：浏览器未获得访问蓝牙设备的权限，请检查设置。';
+                }
+                // 增强: 提供更详细的错误信息
+                console.error('扫描设备失败:', error);
+                addMessage(document.getElementById('output'), `扫描失败：${errorMessage}`, 'received');
+            }
+        });
+
+        document.getElementById('connect-btn').addEventListener('click', async function() {
+            try {
+                const selectedDeviceId = document.getElementById('bluetooth-select').value;
+                if (!selectedDeviceId) {
+                    alert('请先扫描并选择蓝牙设备。');
+                    return;
+                }
+
+                const device = bluetoothDevice;
+                if (!device) {
+                    throw new Error('未找到选定的蓝牙设备，请重新扫描。');
+                }
+
+                await device.gatt.connect();
+                addMessage(document.getElementById('output'), `已连接到蓝牙设备：${device.name || '未知设备'}`, 'received');
+            } catch (error) {
+                addMessage(document.getElementById('output'), `连接失败：${error.message}`, 'received');
+            }
+        });
+
+        document.getElementById('send-command').addEventListener('click', async function() {
+            const command = document.getElementById('command-input').value;
+            if (!command) {
+                alert('请输入命令。');
+                return;
+            }
+
+            if (command.trim() === '/clear') {
+                const output = document.getElementById('command-output');
+                output.innerHTML = '';
+                addMessage(output, '命令行已清空', 'received');
+                document.getElementById('command-input').value = '';
+                document.getElementById('command-input').focus();
+                return;
+            }
+
+            const format = document.getElementById('io-format').value;
+            let data;
+            try {
+                if (format === 'ascii') {
+                    data = new TextEncoder().encode(command);
+                } else {
+                    const hexCommand = toHex(command);
+                    data = hexStringToUint8Array(hexCommand);
+                }
+            } catch (error) {
+                addMessage(document.getElementById('output'), `数据格式错误：${error.message}`, 'received');
+                return;
+            }
+
+            await sendData(data);
+            const output = document.getElementById('command-output');
+            const messageElement = document.createElement('div');
+            messageElement.className = 'message sent';
+            messageElement.textContent = `发送（命令模式）：${format === 'ascii' ? command : toHex(command)}`;
+            output.appendChild(messageElement);
+
+            setTimeout(() => {
+                messageElement.classList.add('show');
+            }, 100);
+
+            output.scrollTop = output.scrollHeight;
+            document.getElementById('command-input').value = '';
+            document.getElementById('command-input').focus();
+        });
+
+        document.getElementById('add-button').addEventListener('click', function() {
+            const buttonName = document.getElementById('button-name').value.trim();
+            const buttonValue = document.getElementById('button-value').value.trim();
+            if (!buttonName || !buttonValue) {
+                alert('请输入按钮名称和键值。');
+                return;
+            }
+
+            createCustomButton(buttonName, buttonValue);
+            document.getElementById('button-name').value = '';
+            document.getElementById('button-value').value = '';
+        });
+
+        function toHex(str) {
+            if (!str) throw new Error('输入不能为空');
+            let hex = '';
+            for (let i = 0; i < str.length; i++) {
+                if (!isNaN(str[i])) {
+                    hex += parseInt(str[i], 10).toString(16).padStart(2, '0');
+                } else {
+                    hex += str.charCodeAt(i).toString(16).padStart(2, '0');
+                }
+            }
+            return hex;
+        }
+
+        function hexStringToUint8Array(hexString) {
+            if (!hexString || !/^[0-9a-fA-F]+$/.test(hexString)) {
+                throw new Error('无效的HEX字符串');
+            }
+            return new Uint8Array(hexString.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+        }
+
+        async function sendData(data) {
+            if (!bluetoothDevice || !bluetoothDevice.gatt.connected) {
+                alert('蓝牙设备未连接，请先连接设备。');
+                return;
+            }
+            const service = await bluetoothDevice.gatt.getPrimaryService('battery_service');
+            const characteristic = await service.getCharacteristic('battery_level');
+            await characteristic.writeValue(new Uint8Array(data));
+        }
+
+        document.getElementById('help-btn').addEventListener('click', function() {
+            const output = document.getElementById('output');
+            const helpText = `
+                帮助文档：
+                1. 扫描蓝牙设备：点击“扫描蓝牙设备”按钮，列出已配对的蓝牙设备。
+                2. 连接蓝牙设备：选择一个设备后，点击“连接蓝牙设备”按钮进行连接。
+                3. 波特率设置：选择波特率以配置通信速度（仅适用于串口设备）。
+                4. IO字节格式：选择ASCII或HEX格式发送数据。
+                5. 自定义键盘：添加自定义按钮，点击按钮发送预设值。
+                6. 命令行模式：输入命令并发送，支持清除命令行（/clear）。
+                7. 帮助：点击此按钮查看帮助文档。
+            `;
+            addMessage(output, helpText, 'received');
+        });
+
+        document.getElementById('command-input').addEventListener('keydown', function(event) {
+            if (event.key === 'Enter') {
+                document.getElementById('send-command').click();
+            }
+        });
+    </script>
+</body>
+</html>
