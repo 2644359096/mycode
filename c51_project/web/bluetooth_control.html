@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>蓝牙控制面板</title>
+    <title>串口控制面板</title>
     <style>
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -148,6 +148,21 @@
             <button id="help-btn">帮助</button>
         </div>
 
+        <!-- 新增串口检测功能模块 -->
+        <h1>串口控制面板</h1>
+        <div class="form-group">
+            <button id="open-serial-btn">打开串口</button>
+            <button id="close-serial-btn" disabled>关闭串口</button>
+        </div>
+
+        <!-- 新增CRLF控制选项 -->
+        <div class="form-group">
+            <label>
+                <input type="checkbox" id="add-crlf">
+                自动添加回车换行（CRLF）
+            </label>
+        </div>
+
         <!-- 修改命令行模块 -->
         <div class="form-group">
             <label>命令行模式：</label>
@@ -160,6 +175,9 @@
     <script>
         let bluetoothDevice = null;
 
+        // 新增串口相关变量
+        let selectedSerialPort = null;
+
         // 新增函数：创建自定义按钮
         function createCustomButton(buttonName, buttonValue) {
             const container = document.getElementById('custom-keyboard-container');
@@ -167,16 +185,27 @@
             button.textContent = buttonName;
             button.style.margin = '5px';
 
-            // 修改：点击按钮时发送数据并显示按钮名称和键值
+            // 修改：增强tooltip样式并添加调试日志
+            button.title = `按钮名称: ${buttonName}\n键值: ${buttonValue}`;
+            console.log(`设置按钮提示：${button.title}`); // 新增调试输出
+
             button.addEventListener('click', async function() {
                 const format = document.getElementById('io-format').value;
+                let valueToSend = buttonValue;
+                if (document.getElementById('add-crlf').checked) {
+                    if (format === 'ascii') {
+                        valueToSend += '\r\n';
+                    } else {
+                        valueToSend += '0D0A';
+                    }
+                }
+
                 let data;
                 try {
                     if (format === 'ascii') {
-                        data = new TextEncoder().encode(buttonValue);
+                        data = new TextEncoder().encode(valueToSend);
                     } else {
-                        const hexValue = toHex(buttonValue);
-                        data = hexStringToUint8Array(hexValue);
+                        data = hexStringToUint8Array(valueToSend);
                     }
                 } catch (error) {
                     addMessage(document.getElementById('output'), `数据格式错误：${error.message}`, 'received');
@@ -184,7 +213,7 @@
                 }
 
                 await sendData(data);
-                addMessage(document.getElementById('output'), `按钮"${buttonName}"被按下，键值：${buttonValue}`, 'sent');
+                addMessage(document.getElementById('command-output'), `按钮"${buttonName}"被按下，键值：${buttonValue}`, 'sent');
             });
 
             const deleteButton = document.createElement('button');
@@ -194,7 +223,7 @@
             deleteButton.addEventListener('click', function() {
                 container.removeChild(button);
                 container.removeChild(deleteButton);
-                addMessage(document.getElementById('output'), `已删除按钮：${buttonName}`, 'received'); // 显示删除信息
+                addMessage(document.getElementById('output'), `已删除按钮：${buttonName}`, 'received');
             });
 
             container.appendChild(button);
@@ -293,6 +322,17 @@
 
                 await device.gatt.connect();
                 addMessage(document.getElementById('output'), `已连接到蓝牙设备：${device.name || '未知设备'}`, 'received');
+
+                // 新增：设置蓝牙接收监听
+                const service = await device.gatt.getPrimaryService('battery_service');
+                const characteristic = await service.getCharacteristic('battery_level');
+                characteristic.addEventListener('characteristicvaluechanged', (event) => {
+                    const value = event.target.value;
+                    const decoder = new TextDecoder('utf-8');
+                    addMessage(document.getElementById('output'), `蓝牙接收：${decoder.decode(value)}`, 'received');
+                });
+                await characteristic.startNotifications();
+
             } catch (error) {
                 addMessage(document.getElementById('output'), `连接失败：${error.message}`, 'received');
             }
@@ -315,13 +355,21 @@
             }
 
             const format = document.getElementById('io-format').value;
+            let commandToSend = command; // 新增变量
+            if (document.getElementById('add-crlf').checked) { // 新增CRLF判断
+                if (format === 'ascii') {
+                    commandToSend += '\r\n';
+                } else {
+                    commandToSend += '0D0A';
+                }
+            }
+
             let data;
             try {
                 if (format === 'ascii') {
-                    data = new TextEncoder().encode(command);
+                    data = new TextEncoder().encode(commandToSend);
                 } else {
-                    const hexCommand = toHex(command);
-                    data = hexStringToUint8Array(hexCommand);
+                    data = hexStringToUint8Array(commandToSend);
                 }
             } catch (error) {
                 addMessage(document.getElementById('output'), `数据格式错误：${error.message}`, 'received');
@@ -377,14 +425,100 @@
             return new Uint8Array(hexString.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
         }
 
-        async function sendData(data) {
-            if (!bluetoothDevice || !bluetoothDevice.gatt.connected) {
-                alert('蓝牙设备未连接，请先连接设备。');
-                return;
+        // 修改打开串口功能：添加数据监听和错误处理
+        document.getElementById('open-serial-btn').addEventListener('click', async () => {
+            try {
+                const port = await navigator.serial.requestPort();
+                const baudRate = parseInt(document.getElementById('baud-rate').value);
+                if (isNaN(baudRate)) {
+                    throw new Error('请选择有效的波特率');
+                }
+                await port.open({ baudRate });
+                selectedSerialPort = port;
+
+                // 新增：保存reader引用以便后续释放
+                const reader = port.readable.getReader();
+                selectedSerialPort.reader = reader;
+
+                // 新增：优先更新按钮状态确保关闭按钮可用
+                document.getElementById('open-serial-btn').disabled = true;
+                document.getElementById('close-serial-btn').disabled = false;
+
+                // 新增数据监听逻辑
+                const readLoop = async () => {
+                    try {
+                        while (true) {
+                            const { value, done } = await reader.read();
+                            if (done) break;
+                            const decoder = new TextDecoder('utf-8');
+                            addMessage(document.getElementById('command-output'), `接收数据：${decoder.decode(value)}`, 'received');
+                        }
+                    } catch (error) {
+                        console.error('串口读取失败:', error);
+                        addMessage(document.getElementById('command-output'), `串口读取异常：${error.message}`, 'received');
+                    } finally {
+                        reader.releaseLock();
+                    }
+                };
+                readLoop();
+
+                // 修改：使用安全的设备标识获取方式
+                addMessage(document.getElementById('output'), `已打开串口：${port.portInfo?.label || '未知设备'}（厂商ID：${port.portInfo?.vendorId || '未知'}）`, 'received');
+            } catch (err) {
+                addMessage(document.getElementById('output'), `打开串口失败：${err.message}`, 'received');
+                // 添加：如果发生异常时恢复按钮状态
+                document.getElementById('open-serial-btn').disabled = false;
+                document.getElementById('close-serial-btn').disabled = true;
+                // 新增reader释放处理
+                if (selectedSerialPort?.reader) {
+                    selectedSerialPort.reader.releaseLock();
+                    selectedSerialPort.reader = null;
+                }
             }
-            const service = await bluetoothDevice.gatt.getPrimaryService('battery_service');
-            const characteristic = await service.getCharacteristic('battery_level');
-            await characteristic.writeValue(new Uint8Array(data));
+        });
+
+        // 修改关闭串口逻辑
+        document.getElementById('close-serial-btn').addEventListener('click', async () => {
+            if (selectedSerialPort) {
+                try {
+                    // 新增：先释放reader锁（确保只释放一次）
+                    if (selectedSerialPort.reader) {
+                        selectedSerialPort.reader.releaseLock();
+                        selectedSerialPort.reader = null; // 置空防止重复释放
+                    }
+
+                    await selectedSerialPort.close();
+                    selectedSerialPort = null;
+                } catch (err) {
+                    console.error('关闭串口失败:', err);
+                    addMessage(document.getElementById('output'), `关闭串口失败：${err.message}`, 'received');
+                } finally {
+                    document.getElementById('open-serial-btn').disabled = false;
+                    document.getElementById('close-serial-btn').disabled = true;
+                }
+                addMessage(document.getElementById('output'), '串口已关闭', 'received');
+            } else {
+                addMessage(document.getElementById('output'), '当前未打开任何串口', 'received');
+            }
+        });
+
+        async function sendData(data) {
+            if (selectedSerialPort && selectedSerialPort.writable) {
+                const writer = selectedSerialPort.writable.getWriter();
+                try {
+                    await writer.write(data);
+                } finally {
+                    writer.releaseLock();
+                }
+            } else {
+                if (bluetoothDevice && bluetoothDevice.gatt.connected) {
+                    const service = await bluetoothDevice.gatt.getPrimaryService('battery_service');
+                    const characteristic = await service.getCharacteristic('battery_level');
+                    await characteristic.writeValue(new Uint8Array(data));
+                } else {
+                    alert('设备未连接，请先连接蓝牙或打开串口');
+                }
+            }
         }
 
         document.getElementById('help-btn').addEventListener('click', function() {
@@ -407,6 +541,7 @@
                 document.getElementById('send-command').click();
             }
         });
+
     </script>
 </body>
 </html>

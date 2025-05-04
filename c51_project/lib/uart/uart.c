@@ -130,14 +130,14 @@ void Uart1_MainFunction(void *params)
             else if (strncmp(Uart1.rx_buf, "/MatrixLED hello", Uart1.rx_len-2)==0)
                 {   
 
-                    tasks[0].state=END;
-                    char state1=(char)tasks[0].state;
-                    Uart1_SendByte(state1);
+                    tasks[0].state=RUNNING;
+                    tasks[1].state=END;
                     Uart1_Send_cmd("MatrixLED show HELLO",OK);
                 }
             else if (strncmp(Uart1.rx_buf, "/MatrixLED kunkun", Uart1.rx_len-2)==0)
                 {   
-                    
+                    tasks[1].state=RUNNING;
+                    tasks[0].state=END;
                     Uart1_Send_cmd("MatrixLED show kunkun",OK);
                 }
             else
