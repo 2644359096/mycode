@@ -24,4 +24,4 @@ jobs:
         run: pip install --upgrade platformio
 
       - name: Run PlatformIO
-        run: cd c51_project && pio run
+        run: cd ESP32 && pio run
