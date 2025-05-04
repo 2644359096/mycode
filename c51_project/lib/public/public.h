@@ -41,7 +41,6 @@ typedef enum
 
 void Delay10us(u8 xus);
 u8 ArrayLength(uarray Array[]);
-void Task_init(LoopFunction_t *tasks,u8 task_count);
-void Loop_Tasks();
+void Loop_Tasks(LoopFunction_t *tasks,u8 task_count);
 
 #endif 

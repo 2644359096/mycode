@@ -28,12 +28,11 @@ int main(void)
         {Dynamic_MatrixLED,&params2,END},
         {Uart1_MainFunction,NULL,RUNNING}
     };
-    static TaskContext_t context = { tasks, 3 };
+    static __data TaskContext_t context = { tasks, 3 };
     tasks[2].params = &context;
 
-    Task_init(context.tasks,3);
 
-    Loop_Tasks();
+    Loop_Tasks(tasks,3);
     
     return 0;
 }

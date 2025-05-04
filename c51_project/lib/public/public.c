@@ -1,9 +1,10 @@
 #include "compile.h"
 #include "stc89xx.h"
 #include "public.h"
+#include <stdlib.h>
 
-LoopFunction_t *Tasks;
-u8 Task_Count;
+
+static  u8 Task_Count;
 
 void Delay10us(u8 xus)		//@11.0592MHz
 {
@@ -45,24 +46,17 @@ u8 ArrayLength(uarray Array[])
     
 }
 
-void Task_init(LoopFunction_t *tasks,u8 task_count)
-{   Task_Count=task_count;
-    for(u8 i=0;i<Task_Count;i++)
-    {
-        Tasks[i]=tasks[i];
-    }
-    
-}
-void Loop_Tasks()
+
+void Loop_Tasks(LoopFunction_t *tasks,u8 task_count)
 {   
     while (1)
     {
-        for(u8 i=0 ;i<Task_Count;i++)
+        for(u8 i=0 ;i<task_count;i++)
         {   
             
-            if(Tasks[i].state == RUNNING)
+            if(tasks[i].state == RUNNING)
             {
-                Tasks[i].func(Tasks[i].params);
+                tasks[i].func(tasks[i].params);
             }
         }
     }
